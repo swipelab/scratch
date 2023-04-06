@@ -1,0 +1,223 @@
+<html>
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
+        <script src="https://sdk.livebuy.io/livebuy-sdk.js"></script>
+        <script lang="js">
+            //#region Utility functions and Flutter JS hooks 
+            function getTranslateXY(element) {
+                const matrix = new DOMMatrixReadOnly(element.style.transform)
+                return {
+                    translateX: matrix.m41,
+                    translateY: matrix.m42
+                }
+            }
+
+            function updatePlayerHeight(blockedHeight) {
+                let playerDiv = document.querySelector("div[data-bambuser-liveshopping-player-id]");
+            
+                //no updates while the player is floating
+                if (!playerDiv || playerDiv.ariaModal === "false") return;
+            
+                playerDiv.style.height = blockedHeight === 0 ? '100%' : `-webkit-calc(100% - ${blockedHeight}px)`;
+                console.log('player height updated');
+
+                //if keyboard is hidden remove focus to allow native back behaviour
+                if (blockedHeight === 0) {
+                    const thief = document.activeElement;
+                    if (!thief) return;
+                    thief.blur();
+                    console.log('removed focus from textfield');
+                }
+            }
+            
+            function translatePlayerY(offsetY) {
+                let playerDiv = document.querySelector("div[data-bambuser-liveshopping-player-id]");
+            
+                //no updates while the player is floating
+                if (!playerDiv || playerDiv.ariaModal === "false") return;
+            
+                playerDiv.style.transform = `translateY(-${offsetY}px)`;
+                console.log('player translated');
+            }
+
+            let bambuserPlayer;
+
+            function enableFirstPartyCookies(isEnabled) {
+                if (!bambuserPlayer) {
+                    console.log('Player not ready');
+                    return;
+                }
+
+                // TODO(Paul): enable after bambuser implements reconfigure
+                // bambuserPlayer.configure({  
+                //     enableFirstPartyCookies: isEnabled,
+                //   });
+            }
+
+            function close() {
+                if (!bambuserPlayer) {
+                    console.log('Player not ready');
+                    return;
+                }
+                bambuserPlayer.close();
+            }
+
+            function minimize() {
+                if (!bambuserPlayer) {
+                    console.log('Player not ready');
+                    return;
+                }
+                bambuserPlayer.minimize();
+            }
+
+            function maximize() {
+                if (!bambuserPlayer) {
+                    console.log('Player not ready');
+                    return;
+                }
+                bambuserPlayer.unminimize();
+            }
+            //#endregion
+
+            //#region player interactions
+            function registerInteractionListener(playerElement) {
+                window.addEventListener('bambuser-liveshop-tracking-point', ({detail}) => {
+                    if (detail && detail.event === 'on-interaction') {
+                        switch (detail.data && detail.data.interactionType) {
+                            case 'close':
+                                Flutter.postMessage(
+                                    JSON.stringify({
+                                        action: 'close',
+                                        relativeTime: detail.data.timeline && detail.data.timeline.relativeTime,
+                                    }));
+                                break;
+                            default:
+                                break;
+                        }
+                    }
+                });
+            }
+
+            function registerMinimizeListener(playerElement) {
+                if (!playerElement) return;
+
+                let minimizeObserver = new MutationObserver(function (mutations) {
+                    mutations.forEach(function (mutationRecord) {
+                        if (playerElement.ariaModal === "true") {
+                            Flutter.postMessage(
+                                JSON.stringify({
+                                    action: 'maximize',
+                                    width: playerElement.clientWidth,
+                                    height: playerElement.clientHeight,
+                                })
+                            );
+                        } else {
+                            Flutter.postMessage(
+                                JSON.stringify({
+                                    action: 'minimize',
+                                    width: playerElement.clientWidth,
+                                    height: playerElement.clientHeight,
+                                }));
+                        }
+                    });
+                });
+
+                minimizeObserver.observe(playerElement, {
+                    attributes: true,
+                    attributeFilter: ['aria-modal']
+                });
+            }
+
+            function registerMoveListener(playerElement) {
+                if (!playerElement) return;
+
+                let styleObserver = new MutationObserver(function (mutations) {
+                    mutations.forEach(function (mutationRecord) {
+                        //no callbacks while the player is full-screen
+                        if (playerElement.ariaModal === "true") return;
+
+                        let translate = getTranslateXY(playerElement);
+                        Flutter.postMessage(
+                            JSON.stringify({
+                                action: 'move',
+                                dx: translate.translateX,
+                                dy: translate.translateY,
+                            })
+                        );
+                    });
+                });
+
+                styleObserver.observe(playerElement, {
+                    attributes: true,
+                    attributeFilter: ['style']
+                });
+            }
+
+
+            function onBambuserReady() {
+                // Player Config and Event Handlers
+                window.onBambuserLiveShoppingReady = function (player) {
+                    const shareUrl = decodeURIComponent("${shareUrl}".replace(/\\+/g, '%20'));
+
+                    bambuserPlayer = player;
+                    player.configure({
+                        locale: "${locale}",
+                        shareBaseUrl: shareUrl,
+                        ui: {
+                            hideShareButton: !shareUrl,
+                            hideShareView: !shareUrl,
+                        },
+                        buttons: {
+                            dismiss: player.BUTTON.MINIMIZE,
+                            product: player.BUTTON.LINK,
+                        },
+                        minimizedPosition: 
+                            minimizedPosition ?? 'top-right',
+                        enableFirstPartyCookies: $enableFirstPartyCookies,
+                    });
+
+                    player.on(player.EVENT.READY, function () {
+                        Flutter.postMessage(
+                            JSON.stringify({
+                                action: 'ready'
+                            }));
+                    });
+
+                    let playerElement = document.querySelector("div[data-bambuser-liveshopping-player-id]");
+
+                    registerInteractionListener(playerElement);
+                    registerMinimizeListener(playerElement);
+                    registerMoveListener(playerElement);
+                };
+            }
+        </script>
+    </head>
+
+    <body>
+        <script>
+            (function () {
+                window.livebuy.startShow(22864, 'bb94bec6');
+
+                // Specify the showID & bind to a CTA element
+                // var showId = "${eventId}";
+
+                // if (!showId) {
+                //     Flutter.postMessage(
+                //         JSON.stringify({
+                //             action: 'close'
+                //         }));
+                //     //todo: error back to flutter
+                // } else {
+                //     window.initBambuserLiveShopping({
+                //         showId,
+                //         type: "overlay",
+                //         startMuted: true,
+                //     });
+                //     onBambuserReady();
+                // }
+            })();
+        </script>
+        <div data-livebuy-popup="eyJhIexample0IzNTgtEXAMPLE0FmLTg2NjItMmY2OI3IiwibCI6Imh0dHBzOi8vYXBpLmxpdmVidXkuaW8ifQ" />
+    </body>
+</html>
