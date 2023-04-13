@@ -4,6 +4,11 @@
         <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
         <script src="https://sdk.livebuy.io/livebuy-sdk.js"></script>
         <script lang="js">
+
+            function startShow(showId) {
+                window.livebuy.startShow(showId, 'bb94bec6', {muted: false});
+            }
+
             //#region Utility functions and Flutter JS hooks 
             function getTranslateXY(element) {
                 const matrix = new DOMMatrixReadOnly(element.style.transform)
@@ -196,9 +201,9 @@
 
     <body>
         <script>
-            (function () {
-                window.livebuy.startShow(22864, 'bb94bec6', {muted: false});
-            })();            
+            document.ready(function() {
+                startShow(22864)
+            });
         </script>
     </body>
 </html>
